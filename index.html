@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Controle de NF-e e boletos</title>
+<meta name="theme-color" content="#bfe3ee">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="NF-e e boletos">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Overpass:wght@400;600;800&family=Overpass+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- Login -->
+<section class="login" id="vLogin" hidden>
+  <div class="dlg">
+    <img src="icons/icon-192.png" alt="">
+    <h2 id="lgTitle">Entrar</h2>
+    <p class="sub" id="lgSub">Controle de NF-e e boletos</p>
+    <form id="lgForm">
+      <label>E-mail<input id="lgEmail" type="email" autocomplete="email" required></label>
+      <label id="lgPassWrap">Senha<input id="lgPass" type="password" autocomplete="current-password" minlength="6" required></label>
+      <button class="pri" id="lgBtn">Entrar</button>
+    </form>
+    <div class="acts" style="margin-top:8px;justify-content:space-between">
+      <button class="link" id="lgToggle">Criar conta</button>
+      <button class="link" id="lgForgot">Esqueci a senha</button>
+    </div>
+    <p class="sub" id="lgMsg" role="status"></p>
+  </div>
+</section>
+
+<!-- Sem acesso -->
+<section class="login" id="vDenied" hidden>
+  <div class="dlg">
+    <h2>Conta ainda não liberada</h2>
+    <p class="sub">Você entrou como <strong id="dnEmail"></strong>, mas este e-mail ainda não tem acesso aos dados. Peça ao responsável para liberar o seu e-mail.</p>
+    <div class="foot" style="margin-top:16px"><button id="dnOut">Sair</button><button class="pri" id="dnRetry">Tentar de novo</button></div>
+  </div>
+</section>
+
+<!-- Nova senha (link de recuperação) -->
+<section class="login" id="vReset" hidden>
+  <div class="dlg">
+    <h2>Definir nova senha</h2>
+    <form id="rsForm"><label>Nova senha<input id="rsPass" type="password" autocomplete="new-password" minlength="6" required></label><button class="pri">Salvar senha</button></form>
+  </div>
+</section>
+
+<!-- App -->
+<div id="vApp" hidden>
+<section class="band top"><div class="in">
+  <div class="head">
+    <div><h1 id="finding">Controle de NF-e e boletos</h1><p class="sub" id="status">Carregando dados…</p></div>
+    <div class="acts"><button class="pri" id="addNf">+ Nota fiscal</button><button id="addBo">+ Boleto</button><button id="install" hidden>Instalar app</button><button id="logout" title="Sair">Sair</button></div>
+  </div>
+  <div id="noteBox"></div>
+  <div class="hero">
+    <div class="map"><div class="fig" id="fig"><svg id="tl" role="img" aria-label="Boletos em aberto nos próximos 30 dias"></svg></div></div>
+    <div class="kpis" id="kpis"></div>
+  </div>
+</div></section>
+
+<section class="band"><div class="in">
+  <div class="head" style="margin-bottom:6px"><h2>Atenção</h2>
+    <div class="acts" style="align-items:center">
+      <label class="ck" style="font-weight:400">Avisar com <input id="alertDays" type="number" min="1" max="60" style="width:76px"> dias de antecedência</label>
+      <button class="sm" id="notifBtn" hidden>Ativar notificações</button>
+    </div></div>
+  <div class="al" id="alerts"></div>
+</div></section>
+
+<section class="band" style="padding-top:0"><div class="in">
+  <div class="tabs" role="tablist"><button role="tab" id="tabB" aria-selected="true">Boletos</button><button role="tab" id="tabN" aria-selected="false">Notas fiscais</button></div>
+  <div id="paneB">
+    <div class="bar" id="chips"></div>
+    <div class="bar"><input id="qB" type="search" placeholder="Buscar emitente, nº da nota, banco…"><button class="sm" id="csv">Exportar CSV</button></div>
+    <div id="tblB"></div>
+  </div>
+  <div id="paneN" hidden>
+    <div class="bar"><input id="qN" type="search" placeholder="Buscar nº, emitente, CNPJ, chave…"></div>
+    <div id="tblN"></div>
+  </div>
+  <p class="who" id="who" style="margin-top:28px"></p>
+</div></section>
+</div>
+
+<div class="ov" id="ov"><div class="dlg" role="dialog" aria-modal="true" id="dlg"></div></div>
+<div class="toast" id="toast" role="status"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
