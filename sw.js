@@ -1,6 +1,6 @@
 // Service worker: deixa o app instalável e abrindo mesmo sem internet.
-const CACHE = 'nfe-v1';
-const SHELL = ['./', 'index.html', 'styles.css', 'app.js', 'config.js', 'manifest.webmanifest',
+const CACHE = 'nfe-v2';
+const SHELL = ['./', 'index.html', 'styles.css', 'app.js', 'codigos.js', 'config.js', 'manifest.webmanifest',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
   'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js'];
 

@@ -74,3 +74,10 @@ table{font-size:13px}.stack thead{display:none}.stack tr{display:grid;padding-bl
 .login form{display:grid;gap:12px;margin-top:16px}.link{background:none;border:0;color:var(--sea2);text-decoration:underline;min-height:44px;padding:0;font-weight:600}
 .who{font-size:14px;color:var(--mute)}
 [hidden]{display:none!important}
+.ov.scan{z-index:11;align-items:center}.toast{z-index:12}
+.vid{position:relative;border-radius:12px;overflow:hidden;background:#000;aspect-ratio:16/9;margin:14px 0 8px}
+.vid video{width:100%;height:100%;object-fit:cover;display:block}
+.vid::after{content:"";position:absolute;left:6%;right:6%;top:50%;height:2px;background:var(--mag);box-shadow:0 0 10px var(--mag)}
+.codebox{display:flex;gap:8px;margin-top:4px}.codebox input{flex:1;font:500 15px 'Overpass Mono',monospace;letter-spacing:.02em}.codebox button{flex:none}
+.parse{font-size:14px;margin-top:6px;min-height:0}.parse.ok{color:var(--sea2)}.parse.bad{color:var(--mag)}
+label.btn{cursor:pointer}details summary{cursor:pointer;font-weight:600;min-height:44px;display:flex;align-items:center}

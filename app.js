@@ -177,58 +177,130 @@ function draw(){const W=svg.clientWidth,H=svg.clientHeight;if(!W||!H)return;cons
   svg.innerHTML=o}
 new ResizeObserver(draw).observe(svg);
 
+/* ---------- leitura de códigos (câmera, foto, colar, leitor USB) ---------- */
+const ZX_URL='https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js';
+let zxP=null;const loadZX=()=>zxP||(zxP=new Promise((ok,no)=>{const s=document.createElement('script');s.src=ZX_URL;s.onload=()=>ok(window.ZXing);s.onerror=()=>{zxP=null;no(new Error('zxing'))};document.head.appendChild(s)}));
+async function bdOk(){if(!('BarcodeDetector' in window))return false;try{const f=await BarcodeDetector.getSupportedFormats();return f.includes('itf')&&f.includes('code_128')}catch(e){return false}}
+async function zxReader(){const ZX=await loadZX();const h=new Map();h.set(ZX.DecodeHintType.POSSIBLE_FORMATS,[ZX.BarcodeFormat.ITF,ZX.BarcodeFormat.CODE_128]);h.set(ZX.DecodeHintType.TRY_HARDER,true);return new ZX.BrowserMultiFormatReader(h,150)}
+async function decodeImage(file){
+  if(await bdOk()){const bmp=await createImageBitmap(file);const r=await new BarcodeDetector({formats:['itf','code_128']}).detect(bmp);if(r.length)return r[0].rawValue}
+  const rd=await zxReader(),url=URL.createObjectURL(file);try{return (await rd.decodeFromImageUrl(url)).getText()}finally{URL.revokeObjectURL(url)}}
+function scan(title,accept){
+  const sc=$('#scan'),video=$('#scVideo'),msg=t=>$('#scMsg').textContent=t;let stop=()=>{},done=false;
+  sc.classList.add('on');$('#scTitle').textContent=title;msg('Abrindo a câmera…');
+  const finish=()=>{done=true;stop();sc.classList.remove('on')};
+  $('#scCancel').onclick=finish;
+  const handle=t=>{if(done)return;const d=String(t||'').replace(/\D/g,'');if(d.length<40)return;if(accept(d)){try{navigator.vibrate?.(80)}catch(e){}finish()}else msg('O código lido não confere. Ajuste a posição e tente de novo.')};
+  $('#scFile').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;msg('Lendo a foto…');try{handle(await decodeImage(f));if(!done)msg('Não encontrei um código válido nessa foto.')}catch(x){msg('Não encontrei código de barras nessa foto. Tente uma foto mais próxima e nítida.')}};
+  const cons={video:{facingMode:'environment',width:{ideal:1920},height:{ideal:1080}}};
+  (async()=>{try{
+    if(!navigator.mediaDevices?.getUserMedia)throw new Error('sem camera');
+    if(await bdOk()){const stream=await navigator.mediaDevices.getUserMedia(cons);let tm;stop=()=>{clearTimeout(tm);stream.getTracks().forEach(t=>t.stop());video.srcObject=null};if(done){stop();return}
+      video.srcObject=stream;await video.play();const det=new BarcodeDetector({formats:['itf','code_128']});msg('Aponte para o código de barras, na horizontal.');
+      const loop=async()=>{if(done)return;try{for(const x of await det.detect(video)){handle(x.rawValue);if(done)return}}catch(e){}tm=setTimeout(loop,120)};loop();
+    }else{const rd=await zxReader();stop=()=>{try{rd.reset()}catch(e){}};if(done)return;
+      await rd.decodeFromConstraints(cons,video,res=>{if(res)handle(res.getText())});if(done){stop();return}msg('Aponte para o código de barras, na horizontal.')}
+  }catch(e){msg(/NotAllowed|Permission/i.test(e?.name||String(e))?'O acesso à câmera foi negado. Libere a câmera nas configurações do navegador, use "Ler de uma foto" ou cole o código.':'Não foi possível abrir a câmera. Use "Ler de uma foto" ou cole o código.')}})();
+}
+// leitor USB digita e aperta Enter: não deixa o Enter enviar o formulário
+const noEnter=el=>el.addEventListener('keydown',e=>{if(e.key=='Enter'){e.preventDefault();el.dispatchEvent(new Event('input'))}});
+
+/* ---------- busca do nome do fornecedor pelo CNPJ ---------- */
+const nomeCache=ls.get('nfe.cnpj',{});
+async function nomeFornecedor(cnpj){
+  for(const n of Object.values(NF))if((n.cnpj||'').replace(/\D/g,'')==cnpj&&n.emitente)return n.emitente;
+  if(nomeCache[cnpj])return nomeCache[cnpj];
+  try{const r=await fetch('https://brasilapi.com.br/api/cnpj/v1/'+cnpj);if(!r.ok)return '';const j=await r.json();const nome=j.nome_fantasia||j.razao_social||'';if(nome){nomeCache[cnpj]=nome;ls.set('nfe.cnpj',nomeCache)}return nome}catch(e){return ''}}
+
 /* ================= formulários ================= */
 const ov=$('#ov'),dlg=$('#dlg');
-const open=h=>{dlg.innerHTML=h;ov.classList.add('on');setTimeout(()=>dlg.querySelector('input,select')?.focus(),30)};
+const open=h=>{dlg.innerHTML=h;ov.classList.add('on');setTimeout(()=>dlg.querySelector('[data-first]')?.focus()||dlg.querySelector('input,select')?.focus(),30)};
 const close=()=>ov.classList.remove('on');
-ov.addEventListener('click',e=>{if(e.target==ov)close()});document.addEventListener('keydown',e=>{if(e.key=='Escape')close()});
+ov.addEventListener('click',e=>{if(e.target==ov)close()});document.addEventListener('keydown',e=>{if(e.key=='Escape'){if($('#scan').classList.contains('on'))$('#scCancel').click();else close()}});
 const v=id=>dlg.querySelector('#'+id)?.value.trim()||'';
-const busy=(on)=>{const b=dlg.querySelector('button.pri');if(b){b.disabled=on;b.textContent=on?'Salvando…':'Salvar'}};
+const setv=(id,x)=>{const el=dlg.querySelector('#'+id);if(el)el.value=x};
+const busy=(on,btn)=>{const b=btn||dlg.querySelector('button.pri');if(b){b.disabled=on;if(on){b.dataset.t=b.textContent;b.textContent='Salvando…'}else if(b.dataset.t)b.textContent=b.dataset.t}};
+const parseMsg=(cls,html)=>{const el=dlg.querySelector('#parse');el.className='parse '+cls;el.innerHTML=html};
 
 function nfForm(id){const n=id?NF[id]:{emissao:iso(today())};const d1=new Date(today());d1.setDate(d1.getDate()+30);
-  open(`<h2>${id?'Editar nota fiscal':'Nova nota fiscal'}</h2><form id="f"><div class="g">
+  open(`<h2>${id?'Editar nota fiscal':'Nova nota fiscal'}</h2><form id="f" autocomplete="off"><div class="g">
+  <div class="w"><label for="chave">Chave de acesso <span class="m">(opcional — escaneie, cole ou digite)</span></label>
+    <div class="codebox"><input id="chave" data-first inputmode="numeric" value="${esc(n.chave)}" placeholder="44 dígitos do código de barras da DANFE"><button type="button" id="scanNf">Escanear</button></div>
+    <div id="parse" class="parse"></div></div>
   <label>Número *<input id="numero" required value="${esc(n.numero)}" inputmode="numeric"></label><label>Série<input id="serie" value="${esc(n.serie)}"></label>
-  <label class="w">Emitente / fornecedor *<input id="emitente" required value="${esc(n.emitente)}"></label>
+  <label class="w">Fornecedor / emitente *<input id="emitente" required value="${esc(n.emitente)}"></label>
   <label>CNPJ<input id="cnpj" value="${esc(n.cnpj)}" inputmode="numeric"></label><label>Data de emissão<input id="emissao" type="date" value="${esc(n.emissao)}"></label>
-  <label>Valor total *<input id="valor" required inputmode="decimal" placeholder="0,00" value="${n.valor!=null?String(n.valor).replace('.',','):''}"></label>
-  <label class="w">Chave de acesso<input id="chave" maxlength="54" inputmode="numeric" value="${esc(n.chave)}" placeholder="44 dígitos"></label>
+  <label>Valor total *<input id="valor" required inputmode="decimal" placeholder="0,00" value="${n.valor!=null?String(n.valor).replace('.',','):''}"></label><span></span>
   <label class="w">Observações<textarea id="obs" rows="2">${esc(n.obs)}</textarea></label>
-  ${id?'':`<fieldset class="w"><legend>Gerar boletos desta nota</legend><label class="ck" style="margin-bottom:10px"><input type="checkbox" id="gen" checked> Criar boletos automaticamente</label>
+  ${id?'':`<details class="w"><summary>Gerar parcelas automaticamente (sem os boletos em mãos)</summary><fieldset style="margin-top:10px"><label class="ck" style="margin-bottom:10px"><input type="checkbox" id="gen"> Criar parcelas</label>
   <div class="g" style="margin:0"><label>Parcelas<input id="parc" type="number" min="1" max="60" value="1"></label><label>Intervalo (dias)<input id="intv" type="number" min="1" value="30"></label>
-  <label class="w">1º vencimento<input id="v1" type="date" value="${iso(d1)}"></label></div></fieldset>`}
-  </div><div class="foot">${id?`<button type="button" class="dng" id="delNfB">Excluir</button>`:''}<button type="button" id="cancel">Cancelar</button><button class="pri">Salvar</button></div></form>`);
+  <label class="w">1º vencimento<input id="v1" type="date" value="${iso(d1)}"></label></div></fieldset></details>`}
+  </div><div class="foot">${id?`<button type="button" class="dng" id="delNfB">Excluir</button>`:''}<button type="button" id="cancel">Cancelar</button><button class="pri">${id?'Salvar':'Salvar e lançar boletos'}</button></div></form>`);
   $('#cancel').onclick=close;
+  const ch=dlg.querySelector('#chave');noEnter(ch);
+  const onChave=async()=>{const r=Codigos.lerChave(ch.value);
+    if(!r.ok){parseMsg(r.erro?'bad':'',esc(r.erro));return}
+    ch.value=r.chave;
+    const dup=Object.entries(NF).find(([k,x])=>k!=id&&x.chave==r.chave);
+    setv('numero',r.numero);setv('serie',r.serie);setv('cnpj',r.cnpjFmt);
+    const e=toD(v('emissao')),t=today();if(!id&&(!e||e.getMonth()+1!=r.mes||e.getFullYear()!=r.ano))setv('emissao',(t.getMonth()+1==r.mes&&t.getFullYear()==r.ano)?iso(t):`${r.ano}-${String(r.mes).padStart(2,'0')}-01`);
+    parseMsg(r.valida?'ok':'bad',`${r.valida?'Chave válida':'Atenção: o dígito verificador não confere — confira a chave'} · ${r.modelo} ${esc(r.numero)} série ${esc(r.serie)} · ${r.uf} · ${String(r.mes).padStart(2,'0')}/${r.ano}`+
+      (dup?`<br><strong>Esta nota já foi lançada.</strong> <button type="button" class="link" data-open-nf="${dup[0]}">Abrir a nota</button>`:''));
+    if(!v('emitente')){setv('emitente','');dlg.querySelector('#emitente').placeholder='Buscando fornecedor…';const nome=await nomeFornecedor(r.cnpj);const el=dlg.querySelector('#emitente');if(el){el.placeholder='';if(nome&&!el.value)el.value=nome}}
+    if(!v('valor'))dlg.querySelector('#valor')?.focus()};
+  ch.addEventListener('input',onChave);
+  if(n.chave)onChave();
+  $('#scanNf').onclick=()=>scan('Escanear a nota (DANFE)',d=>{const r=Codigos.lerChave(d);if(!r.ok||!r.valida)return false;ch.value=d;onChave();return true});
   if(id)$('#delNfB').onclick=()=>{const q=bosOf(id).length;confirmDlg(`Excluir ${nfLabel(n)}${q?` e ${q} ${pl(q,'boleto vinculado','boletos vinculados')}`:''}?`,async()=>{await delNf(id);toast('Nota excluída')})};
   $('#f').onsubmit=async e=>{e.preventDefault();const val=parseVal(v('valor'));if(isNaN(val)){toast('Valor inválido');return}
-    const chave=v('chave').replace(/\D/g,'');if(chave&&chave.length!=44){toast('A chave de acesso deve ter 44 dígitos');return}
+    const chave=v('chave').replace(/\D/g,'');if(chave&&chave.length!=44){toast('A chave de acesso deve ter 44 dígitos (ou deixe em branco)');return}
     const nid=id||uid();const obj={numero:v('numero'),serie:v('serie'),emitente:v('emitente'),cnpj:v('cnpj'),emissao:v('emissao'),valor:val,chave,obs:v('obs')};
     busy(true);
-    try{await putNf(nid,obj);
-      if(!id&&dlg.querySelector('#gen')?.checked&&v('v1')){const p=Math.max(1,Math.min(60,+v('parc')||1)),iv=+v('intv')||30,c=Math.round(val*100),base=Math.floor(c/p),list=[];
+    try{await putNf(nid,obj);let gerou=false;
+      if(!id&&dlg.querySelector('#gen')?.checked&&v('v1')){gerou=true;const p=Math.max(1,Math.min(60,+v('parc')||1)),iv=+v('intv')||30,c=Math.round(val*100),base=Math.floor(c/p),list=[];
         for(let i=0;i<p;i++){const d=toD(v('v1'));d.setDate(d.getDate()+iv*i);const cents=i==p-1?c-base*(p-1):base;
           list.push([uid(),{nfeId:nid,parcela:p>1?`${i+1}/${p}`:'',valor:cents/100,venc:iso(d),banco:'',linha:'',pago:false,pagoEm:'',obs:''}])}
         await putBos(list)}
-      close();toast(id?'Nota atualizada':'Nota lançada')}catch(e){busy(false)}};
+      toast(id?'Nota atualizada':'Nota lançada');if(!id&&!gerou)boForm(null,nid);else close()}catch(e){busy(false)}};
 }
 
 function boForm(id,nfeId){const b=id?BO[id]:{nfeId:nfeId||'',venc:'',pago:false};
   const opts=Object.entries(NF).sort((a,c)=>(c[1].emissao||'').localeCompare(a[1].emissao||'')).map(([k,n])=>`<option value="${k}" ${k==b.nfeId?'selected':''}>${nfLabel(n)} — ${esc(n.emitente)}</option>`).join('');
-  open(`<h2>${id?'Editar boleto':'Novo boleto'}</h2><form id="f"><div class="g">
-  <label class="w">Nota fiscal vinculada<select id="nfeId"><option value="">— sem nota —</option>${opts}</select></label>
+  const qtd=nid=>bosOf(nid).filter(([k])=>k!=id).length;
+  open(`<h2>${id?'Editar boleto':'Novo boleto'}</h2><form id="f" autocomplete="off"><div class="g">
+  <label class="w">Nota fiscal vinculada<select id="nfeId"><option value="">— sem nota —</option>${opts}</select><span class="m" id="falta" style="font-weight:400"></span></label>
+  <div class="w"><label for="linha">Código do boleto <span class="m">(cole a linha digitável, escaneie ou use o leitor)</span></label>
+    <div class="codebox"><input id="linha" data-first inputmode="numeric" value="${esc(b.linha)}" placeholder="Linha digitável (47 dígitos) ou código de barras (44)"><button type="button" id="scanBo">Escanear</button></div>
+    <div id="parse" class="parse"></div></div>
   <label>Valor *<input id="valor" required inputmode="decimal" placeholder="0,00" value="${b.valor!=null?String(b.valor).replace('.',','):''}"></label>
   <label>Vencimento *<input id="venc" type="date" required value="${esc(b.venc)}"></label>
   <label>Parcela<input id="parcela" placeholder="ex.: 1/3" value="${esc(b.parcela)}"></label><label>Banco / beneficiário<input id="banco" value="${esc(b.banco)}"></label>
-  <label class="w">Linha digitável<input id="linha" inputmode="numeric" value="${esc(b.linha)}"></label>
   <label class="ck w"><input type="checkbox" id="pago" ${b.pago?'checked':''}> Pago</label>
   <label>Data do pagamento<input id="pagoEm" type="date" value="${esc(b.pagoEm)}"></label><span></span>
   <label class="w">Observações<textarea id="obs" rows="2">${esc(b.obs)}</textarea></label>
-  </div><div class="foot">${id?`<button type="button" class="dng" id="delBoB">Excluir</button>`:''}<button type="button" id="cancel">Cancelar</button><button class="pri">Salvar</button></div></form>`);
+  </div><div class="foot">${id?`<button type="button" class="dng" id="delBoB">Excluir</button>`:''}<button type="button" id="cancel">${id?'Cancelar':'Fechar'}</button>${id?'':`<button type="button" id="saveNext">Salvar e próximo boleto</button>`}<button class="pri">Salvar</button></div></form>`);
   $('#cancel').onclick=close;
+  const sel=dlg.querySelector('#nfeId');
+  const falta=()=>{const nid=sel.value,el=dlg.querySelector('#falta');if(!nid){el.textContent='';return}const n=NF[nid],soma=bosOf(nid).filter(([k])=>k!=id).reduce((s,[,x])=>s+(+x.valor||0),0),f=Math.round(((+n.valor||0)-soma)*100)/100;
+    el.textContent=` ${qtd(nid)} ${pl(qtd(nid),'boleto lançado','boletos lançados')} · ${f>0?'faltam '+money(f)+' para fechar a nota':f<0?'boletos já passam '+money(-f)+' do valor da nota':'nota completa'}`;};
+  sel.onchange=falta;falta();
+  const li=dlg.querySelector('#linha');noEnter(li);
+  const onCode=()=>{const r=Codigos.lerBoleto(li.value);
+    if(!r.ok){parseMsg(r.erro?'bad':'',esc(r.erro));return}
+    li.value=r.linhaFmt;
+    if(r.valor>0)setv('valor',String(r.valor.toFixed(2)).replace('.',','));if(r.venc)setv('venc',r.venc);if(r.banco&&!v('banco'))setv('banco',r.banco);
+    const dup=Object.entries(BO).find(([k,x])=>k!=id&&(x.linha||'').replace(/\D/g,'')==r.linha);
+    parseMsg(r.valida?'ok':'bad',`${r.valida?'Código válido':'Atenção: os dígitos verificadores não conferem — confira o código'} · ${esc(r.banco||'Convênio')} · ${r.valor>0?money(r.valor):'valor não informado'} · ${r.venc?'vence '+br(r.venc):'sem vencimento no código'}`+
+      (dup?`<br><strong>Este boleto já foi lançado</strong> (${esc(nfLabel(nfOf(dup[1])))}, ${br(dup[1].venc)}).`:''))};
+  li.addEventListener('input',onCode);if(b.linha)onCode();
+  $('#scanBo').onclick=()=>scan('Escanear o boleto',d=>{const r=Codigos.lerBoleto(d);if(!r.ok||!r.valida)return false;li.value=d;onCode();return true});
   $('#pago').onchange=e=>{if(e.target.checked&&!v('pagoEm'))$('#pagoEm').value=iso(today())};
   if(id)$('#delBoB').onclick=()=>confirmDlg('Excluir este boleto?',async()=>{await delBo(id);toast('Boleto excluído')});
-  $('#f').onsubmit=async e=>{e.preventDefault();const val=parseVal(v('valor'));if(isNaN(val)){toast('Valor inválido');return}
+  const save=async(next,btn)=>{const val=parseVal(v('valor'));if(isNaN(val)){toast('Valor inválido');return}if(!v('venc')){toast('Informe o vencimento');return}
     const pago=$('#pago').checked;const obj={nfeId:v('nfeId'),valor:val,venc:v('venc'),parcela:v('parcela'),banco:v('banco'),linha:v('linha'),pago,pagoEm:pago?(v('pagoEm')||iso(today())):'',obs:v('obs')};
-    busy(true);try{await putBo(id||uid(),obj);close();toast(id?'Boleto atualizado':'Boleto lançado')}catch(e){busy(false)}};
+    busy(true,btn);try{await putBo(id||uid(),obj);toast(id?'Boleto atualizado':'Boleto lançado');if(next)boForm(null,obj.nfeId);else close()}catch(e){busy(false,btn)}};
+  $('#f').onsubmit=e=>{e.preventDefault();save(false)};
+  if(!id)$('#saveNext').onclick=e=>{if(dlg.querySelector('#f').reportValidity())save(true,e.currentTarget)};
 }
 
 function confirmDlg(msg,fn){open(`<h2>${esc(msg)}</h2><p class="sub">Esta ação não pode ser desfeita.</p><div class="foot" style="margin-top:18px"><button id="no">Cancelar</button><button class="pri" id="yes" style="background:var(--mag);border-color:var(--mag)">Excluir</button></div>`);
@@ -252,8 +324,8 @@ $('#install').onclick=async()=>{if(!installEvt)return;installEvt.prompt();await 
 if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
 
 /* ================= eventos ================= */
-document.addEventListener('click',async e=>{const t=e.target.closest('[data-pay],[data-unpay],[data-eb],[data-en],[data-nb],[data-copy],[data-f]');if(!t)return;const d=t.dataset;
-  if(d.pay)setPaid(d.pay,true);else if(d.unpay)setPaid(d.unpay,false);else if(d.eb)boForm(d.eb);else if(d.en)nfForm(d.en);else if(d.nb)boForm(null,d.nb);
+document.addEventListener('click',async e=>{const t=e.target.closest('[data-pay],[data-unpay],[data-eb],[data-en],[data-nb],[data-copy],[data-f],[data-open-nf]');if(!t)return;const d=t.dataset;
+  if(d.openNf)nfForm(d.openNf);else if(d.pay)setPaid(d.pay,true);else if(d.unpay)setPaid(d.unpay,false);else if(d.eb)boForm(d.eb);else if(d.en)nfForm(d.en);else if(d.nb)boForm(null,d.nb);
   else if(d.f){filt=d.f;renderB()}
   else if(d.copy){try{await navigator.clipboard.writeText(BO[d.copy].linha);toast('Linha digitável copiada')}catch(x){toast('Não foi possível copiar')}}});
 $('#addNf').onclick=()=>nfForm();
