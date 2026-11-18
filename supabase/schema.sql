@@ -75,5 +75,20 @@ do $$ begin
   alter publication supabase_realtime add table public.nfes, public.boletos;
 exception when duplicate_object then null; end $$;
 
--- Libere o seu e-mail (e de quem mais for usar):
+-- A primeira conta criada vira membro automaticamente:
+create or replace function private.liberar_primeiro_usuario()
+returns trigger language plpgsql security definer set search_path = '' as $$
+begin
+  if new.email is not null and not exists (select 1 from public.membros) then
+    insert into public.membros(email) values (lower(new.email)) on conflict do nothing;
+  end if;
+  return new;
+end;
+$$;
+revoke all on function private.liberar_primeiro_usuario() from public, anon, authenticated;
+drop trigger if exists liberar_primeiro_usuario on auth.users;
+create trigger liberar_primeiro_usuario after insert on auth.users
+  for each row execute function private.liberar_primeiro_usuario();
+
+-- Para liberar outras pessoas:
 -- insert into public.membros(email) values ('voce@exemplo.com');

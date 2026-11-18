@@ -15,10 +15,15 @@ App instalável (PWA) para lançar notas fiscais e boletos vinculados, acompanha
 | `manifest.webmanifest`, `sw.js`, `icons/` | Instalação como app e funcionamento offline |
 | `supabase/schema.sql` | Tabelas, regras de acesso e tempo real |
 
-## Configuração
+## No ar
+
+- App: https://ellevenmkt.github.io/controle-nfe/
+- Supabase: projeto `controle-nfe` (sa-east-1)
+
+## Configuração (já feita)
 
 1. **Supabase:** crie um projeto e rode `supabase/schema.sql` no SQL Editor.
-2. **Liberar acesso:** `insert into public.membros(email) values ('seu@email.com');`
+2. **Liberar acesso:** a primeira conta criada no app é liberada automaticamente. As próximas precisam ser adicionadas em `membros` (veja abaixo).
 3. **Auth → URL Configuration:** em *Site URL* e *Redirect URLs*, coloque o endereço do GitHub Pages (ex.: `https://usuario.github.io/controle-nfe/`).
 4. **config.js:** preencha `SUPABASE_URL` e `SUPABASE_ANON_KEY` (Project Settings → API).
 5. **GitHub Pages:** Settings → Pages → *Deploy from a branch* → `main` / raiz.
