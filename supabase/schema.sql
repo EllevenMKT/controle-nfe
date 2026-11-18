@@ -38,16 +38,20 @@ create table if not exists public.boletos (
 create index if not exists boletos_nfe_idx  on public.boletos(nfe_id);
 create index if not exists boletos_venc_idx on public.boletos(venc) where not pago;
 
--- Quem é membro?
-create or replace function public.eh_membro()
+-- Quem é membro? (função fica num schema privado, fora da API pública)
+create schema if not exists private;
+revoke all on schema private from public, anon;
+grant usage on schema private to authenticated;
+
+create or replace function private.eh_membro()
 returns boolean language sql stable security definer set search_path = '' as $$
   select exists (
     select 1 from public.membros
     where lower(email) = lower(coalesce(auth.jwt() ->> 'email', ''))
   );
 $$;
-revoke all on function public.eh_membro() from public;
-grant execute on function public.eh_membro() to authenticated;
+revoke all on function private.eh_membro() from public, anon;
+grant execute on function private.eh_membro() to authenticated;
 
 alter table public.membros enable row level security;
 alter table public.nfes    enable row level security;
@@ -60,11 +64,11 @@ create policy "membro ve o proprio cadastro" on public.membros
 
 drop policy if exists "membros gerenciam notas" on public.nfes;
 create policy "membros gerenciam notas" on public.nfes
-  for all to authenticated using (public.eh_membro()) with check (public.eh_membro());
+  for all to authenticated using ((select private.eh_membro())) with check ((select private.eh_membro()));
 
 drop policy if exists "membros gerenciam boletos" on public.boletos;
 create policy "membros gerenciam boletos" on public.boletos
-  for all to authenticated using (public.eh_membro()) with check (public.eh_membro());
+  for all to authenticated using ((select private.eh_membro())) with check ((select private.eh_membro()));
 
 -- Atualização em tempo real entre aparelhos
 do $$ begin
